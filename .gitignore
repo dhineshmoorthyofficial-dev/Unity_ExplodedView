@@ -32,3 +32,12 @@
 # OS generated
 .DS_Store
 Thumbs.db
+
+# Remotion
+RemotionVideo~/node_modules/
+RemotionVideo~/out/
+RemotionVideo~/.remotion/
+npm-debug.log*
+
+# Documentation
+Documentation~/
