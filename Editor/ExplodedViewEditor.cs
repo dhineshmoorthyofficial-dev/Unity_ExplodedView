@@ -26,6 +26,7 @@ public class ExplodedViewEditor : Editor
         center = serializedObject.FindProperty("center");
         useHierarchicalCenter = serializedObject.FindProperty("useHierarchicalCenter");
         autoGroupChildren = serializedObject.FindProperty("autoGroupChildren");
+        serializedObject.FindProperty("curveStrength"); // Ensure property exists for later if needed, but we'll use SerializedProperty for UI
     }
 
     public override void OnInspectorGUI()
@@ -45,6 +46,7 @@ public class ExplodedViewEditor : Editor
         }
         
         EditorGUILayout.PropertyField(autoGroupChildren);
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("autoCreateTargets"), new GUIContent("Auto-Create Targets"));
         
         EditorGUILayout.BeginHorizontal();
         EditorGUILayout.PropertyField(serializedObject.FindProperty("drawDebugLines"), new GUIContent("Draw Debug Lines"));
@@ -55,9 +57,9 @@ public class ExplodedViewEditor : Editor
 
         ExplodedView root = (ExplodedView)target;
 
-        if (root.subManagers != null && root.subManagers.Count > 0)
+        if ((root.subManagers != null && root.subManagers.Count > 0) || (root.parts != null && root.parts.Count > 0))
         {
-            EditorGUILayout.LabelField("Master Control (Hierarchy)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Structure & Targets", EditorStyles.boldLabel);
             DrawSubManagersRecursive(root);
         }
         
@@ -109,7 +111,8 @@ public class ExplodedViewEditor : Editor
     {
         if (manager == null) return;
         
-        bool isParentInTargetMode = manager.explosionMode == ExplodedView.ExplosionMode.Target;
+        
+        bool isParentInTargetMode = manager.explosionMode == ExplodedView.ExplosionMode.Target || manager.explosionMode == ExplodedView.ExplosionMode.Curved;
 
         // 1. Draw Sub-Managers (Groups)
         if (manager.subManagers != null)
@@ -171,6 +174,15 @@ public class ExplodedViewEditor : Editor
                     EditorUtility.SetDirty(sub);
                 }
 
+                EditorGUI.BeginChangeCheck();
+                bool subDrawLines = EditorGUILayout.Toggle("Draw Lines", sub.drawDebugLines);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(sub, "Toggle Sub-Manager Debug Lines");
+                    sub.drawDebugLines = subDrawLines;
+                    EditorUtility.SetDirty(sub);
+                }
+
                 // NEW: Show Target Reference (Endpoint) from the parent's perspective
                 if (isParentInTargetMode)
                 {
@@ -185,10 +197,49 @@ public class ExplodedViewEditor : Editor
                             partData.targetTransform = newTarget;
                             EditorUtility.SetDirty(manager);
                         }
+
+                        // NEW: Control Points for Sub-Managers (Groups)
+                        if (manager.explosionMode == ExplodedView.ExplosionMode.Curved)
+                        {
+                            EditorGUI.indentLevel++;
+                            bool cpExpanded = foldoutStates.ContainsKey(id + 1000) ? foldoutStates[id + 1000] : false;
+                            cpExpanded = EditorGUILayout.Foldout(cpExpanded, "Control Points (" + partData.controlPoints.Count + ")");
+                            foldoutStates[id + 1000] = cpExpanded;
+                            
+                            if (cpExpanded)
+                            {
+                                for (int i = 0; i < partData.controlPoints.Count; i++)
+                                {
+                                    EditorGUILayout.BeginHorizontal();
+                                    EditorGUI.BeginChangeCheck();
+                                    partData.controlPoints[i] = (Transform)EditorGUILayout.ObjectField("Point " + i, partData.controlPoints[i], typeof(Transform), true);
+                                    if (EditorGUI.EndChangeCheck())
+                                    {
+                                        Undo.RecordObject(manager, "Change Control Point");
+                                        EditorUtility.SetDirty(manager);
+                                    }
+                                    if (GUILayout.Button("X", GUILayout.Width(20)))
+                                    {
+                                        Undo.RecordObject(manager, "Remove Control Point");
+                                        partData.controlPoints.RemoveAt(i);
+                                        EditorUtility.SetDirty(manager);
+                                        break;
+                                    }
+                                    EditorGUILayout.EndHorizontal();
+                                }
+                                if (GUILayout.Button("Add Control Point", EditorStyles.miniButton))
+                                {
+                                    Undo.RecordObject(manager, "Add Control Point");
+                                    partData.controlPoints.Add(null);
+                                    EditorUtility.SetDirty(manager);
+                                }
+                            }
+                            EditorGUI.indentLevel--;
+                        }
                     }
                 }
 
-                if (sub.explosionMode == ExplodedView.ExplosionMode.Target)
+                if (sub.explosionMode == ExplodedView.ExplosionMode.Target || sub.explosionMode == ExplodedView.ExplosionMode.Curved)
                 {
                     EditorGUILayout.BeginHorizontal();
                     
@@ -266,6 +317,45 @@ public class ExplodedViewEditor : Editor
                     part.targetTransform = newTarget;
                     EditorUtility.SetDirty(manager);
                 }
+
+                // NEW: Control Points List for Leaf Parts
+                if (manager.explosionMode == ExplodedView.ExplosionMode.Curved)
+                {
+                    EditorGUI.indentLevel++;
+                    bool cpExpanded = foldoutStates.ContainsKey(part.transform.GetInstanceID() + 5000) ? foldoutStates[part.transform.GetInstanceID() + 5000] : false;
+                    cpExpanded = EditorGUILayout.Foldout(cpExpanded, "Control Points (" + part.controlPoints.Count + ")");
+                    foldoutStates[part.transform.GetInstanceID() + 5000] = cpExpanded;
+                    
+                    if (cpExpanded)
+                    {
+                        for (int i = 0; i < part.controlPoints.Count; i++)
+                        {
+                            EditorGUILayout.BeginHorizontal();
+                            EditorGUI.BeginChangeCheck();
+                            part.controlPoints[i] = (Transform)EditorGUILayout.ObjectField("Point " + i, part.controlPoints[i], typeof(Transform), true);
+                            if (EditorGUI.EndChangeCheck())
+                            {
+                                Undo.RecordObject(manager, "Change Control Point");
+                                EditorUtility.SetDirty(manager);
+                            }
+                            if (GUILayout.Button("X", GUILayout.Width(20)))
+                            {
+                                Undo.RecordObject(manager, "Remove Control Point");
+                                part.controlPoints.RemoveAt(i);
+                                EditorUtility.SetDirty(manager);
+                                break;
+                            }
+                            EditorGUILayout.EndHorizontal();
+                        }
+                        if (GUILayout.Button("Add Control Point", EditorStyles.miniButton))
+                        {
+                            Undo.RecordObject(manager, "Add Control Point");
+                            part.controlPoints.Add(null);
+                            EditorUtility.SetDirty(manager);
+                        }
+                    }
+                    EditorGUI.indentLevel--;
+                }
             }
             EditorGUILayout.EndVertical();
         }
@@ -273,20 +363,22 @@ public class ExplodedViewEditor : Editor
 
     private void OnSceneGUI()
     {
-        ExplodedView root = (ExplodedView)target;
-        if (root == null || !root.drawDebugLines) return;
+        ExplodedView manager = (ExplodedView)target;
+        if (manager == null) return;
 
-        Handles.color = root.debugLineColor;
-        DrawDebugLinesRecursive(root);
+        DrawDebugLinesRecursive(manager);
     }
 
     private void DrawDebugLinesRecursive(ExplodedView manager)
     {
         if (manager == null) return;
 
-        foreach (var part in manager.parts)
+        if (manager.drawDebugLines)
         {
-            if (part == null || part.transform == null) continue;
+            Handles.color = manager.debugLineColor;
+            foreach (var part in manager.parts)
+            {
+                if (part == null || part.transform == null) continue;
 
             Vector3 startPos = part.transform.parent != null 
                 ? part.transform.parent.TransformPoint(part.originalLocalPosition) 
@@ -304,13 +396,48 @@ public class ExplodedViewEditor : Editor
             else if (manager.explosionMode == ExplodedView.ExplosionMode.Target && part.targetTransform != null)
             {
                 endPos = part.targetTransform.position;
+                Handles.DrawDottedLine(startPos, endPos, 4f);
+            }
+            else if (manager.explosionMode == ExplodedView.ExplosionMode.Curved && part.targetTransform != null)
+            {
+                endPos = part.targetTransform.position;
+                
+                // Draw Bezier Curve with multi-point support
+                List<Vector3> points = new List<Vector3>();
+                points.Add(startPos);
+                foreach (var cp in part.controlPoints) if (cp != null) points.Add(cp.position);
+                points.Add(endPos);
+
+                // Draw segments of the curve for high-fidelity visualization
+                int segments = 20;
+                Vector3 lastP = startPos;
+                for (int i = 1; i <= segments; i++)
+                {
+                    float t = i / (float)segments;
+                    Vector3 nextP = GetBezierPointWorld(t, points);
+                    Handles.DrawLine(lastP, nextP);
+                    lastP = nextP;
+                }
+
+                // NEW: Draw lines connecting the control points (the "hull")
+                Handles.color = new Color(manager.debugLineColor.r, manager.debugLineColor.g, manager.debugLineColor.b, 0.3f);
+                for (int i = 0; i < points.Count - 1; i++)
+                {
+                    Handles.DrawDottedLine(points[i], points[i + 1], 2f);
+                    Handles.SphereHandleCap(0, points[i+1], Quaternion.identity, 0.03f * HandleUtility.GetHandleSize(points[i+1]), EventType.Repaint);
+                }
+                Handles.color = manager.debugLineColor;
             }
 
-            Handles.DrawDottedLine(startPos, endPos, 4f);
+            if (manager.explosionMode != ExplodedView.ExplosionMode.Curved)
+            {
+                Handles.DrawDottedLine(startPos, endPos, 4f);
+            }
             Handles.SphereHandleCap(0, startPos, Quaternion.identity, 0.05f * HandleUtility.GetHandleSize(startPos), EventType.Repaint);
             Handles.ArrowHandleCap(0, endPos, manager.explosionMode == ExplodedView.ExplosionMode.Spherical 
                 ? Quaternion.LookRotation(endPos - startPos) 
                 : Quaternion.identity, 0.2f * HandleUtility.GetHandleSize(endPos), EventType.Repaint);
+            }
         }
 
         if (manager.subManagers != null)
@@ -320,5 +447,17 @@ public class ExplodedViewEditor : Editor
                 if (sub != null) DrawDebugLinesRecursive(sub);
             }
         }
+    }
+
+    private Vector3 GetBezierPointWorld(float t, List<Vector3> points)
+    {
+        if (points == null || points.Count < 2) return Vector3.zero;
+        int n = points.Count;
+        Vector3[] temp = new Vector3[n];
+        for (int i = 0; i < n; i++) temp[i] = points[i];
+        for (int j = 1; j < n; j++)
+            for (int i = 0; i < n - j; i++)
+                temp[i] = Vector3.Lerp(temp[i], temp[i + 1], t);
+        return temp[0];
     }
 }

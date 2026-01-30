@@ -3,12 +3,13 @@ using UnityEngine;
 [ExecuteAlways]
 public class ExplodedView : MonoBehaviour
 {
-    public enum ExplosionMode { Spherical, Target }
+    public enum ExplosionMode { Spherical, Target, Curved }
     public ExplosionMode explosionMode = ExplosionMode.Spherical;
 
     [Range(0f, 1f)]
     public float explosionFactor = 0f;
     public float sensitivity = 1f;
+    public bool autoCreateTargets = false;
     public Transform center;
     public bool useHierarchicalCenter = false;
     public bool autoGroupChildren = false;
@@ -23,7 +24,8 @@ public class ExplodedView : MonoBehaviour
         public Quaternion originalLocalRotation;
         public Vector3 originalLocalScale;
         public Vector3 direction; // Used for Spherical
-        public Transform targetTransform; // Used for Target Mode
+        public Transform targetTransform; // Used for Target/Curved Mode (Endpoint)
+        public List<Transform> controlPoints = new List<Transform>(); // New: Custom curve control
     }
 
     [SerializeField] // Serialize to keep data between reloads/play mode
@@ -40,9 +42,17 @@ public class ExplodedView : MonoBehaviour
     private void OnEnable()
     {
         // Only setup if we haven't already, or if the list is empty
-        if (parts == null || parts.Count == 0 || subManagers == null)
+        if (autoCreateTargets && (parts == null || parts.Count == 0 || subManagers == null))
         {
             SetupExplosion();
+        }
+    }
+
+    private void OnValidate()
+    {
+        if (autoCreateTargets && (explosionMode == ExplosionMode.Target || explosionMode == ExplosionMode.Curved))
+        {
+            InitializeTargetMode();
         }
     }
 
@@ -74,6 +84,12 @@ public class ExplodedView : MonoBehaviour
         // 2. Recursively find "Significant Parts" to move
         // This stops at the first thing that is either a Renderer OR another manager.
         DiscoverParts(transform, center != null ? center.position : transform.position);
+
+        // 3. Initialize Targets and Control Points if needed
+        if (explosionMode == ExplosionMode.Target || explosionMode == ExplosionMode.Curved)
+        {
+            InitializeTargetMode();
+        }
         
         Debug.Log($"ExplodedView ({gameObject.name}): Setup complete. Moving {parts.Count} parts locally. Master Control has {subManagers.Count} direct sub-managers.");
     }
@@ -127,7 +143,7 @@ public class ExplodedView : MonoBehaviour
         Vector3 localDir = child.parent != null ? child.parent.InverseTransformVector(worldDir) : worldDir;
 
         Transform targetT = null;
-        if (explosionMode == ExplosionMode.Target)
+        if (explosionMode == ExplosionMode.Target || explosionMode == ExplosionMode.Curved)
         {
             targetT = SetupTargetObject(child, localDir);
         }
@@ -153,6 +169,49 @@ public class ExplodedView : MonoBehaviour
             {
                 part.targetTransform = SetupTargetObject(part.transform, part.direction);
             }
+            
+            // Auto-populate control points for Curved mode if empty
+            if (explosionMode == ExplosionMode.Curved && (part.controlPoints == null || part.controlPoints.Count == 0))
+            {
+                InitializeControlPoints(part);
+            }
+        }
+    }
+
+    private void InitializeControlPoints(PartData part)
+    {
+        if (part.targetTransform == null) return;
+        
+        Transform cpContainer = part.targetTransform.Find("ControlPoints");
+        if (cpContainer == null)
+        {
+            GameObject go = new GameObject("ControlPoints");
+            cpContainer = go.transform;
+            cpContainer.SetParent(part.targetTransform, false);
+            cpContainer.localPosition = Vector3.zero;
+        }
+
+        // Create 2 default control points for a Cubic Bezier arc
+        part.controlPoints.Clear();
+        for (int i = 1; i <= 2; i++)
+        {
+            float ratio = i * 0.05f; // Place them at 5% and 10% along the path
+            string cpName = $"CP_{i}";
+            Transform cp = cpContainer.Find(cpName);
+            if (cp == null)
+            {
+                GameObject cpGo = new GameObject(cpName);
+                cp = cpGo.transform;
+                cp.SetParent(cpContainer, false);
+                
+                // Position along the path with a very subtle initial arc
+                Vector3 start = part.originalLocalPosition;
+                Vector3 end = part.targetTransform.localPosition;
+                Vector3 linearMid = Vector3.Lerp(start, end, ratio);
+                // Very subtle default arc offset (5% of sensitivity)
+                cp.localPosition = part.targetTransform.InverseTransformPoint(linearMid + part.direction * (sensitivity * 0.05f));
+            }
+            part.controlPoints.Add(cp);
         }
     }
 
@@ -167,6 +226,7 @@ public class ExplodedView : MonoBehaviour
         foreach (var part in parts)
         {
             part.targetTransform = null;
+            part.controlPoints.Clear();
         }
     }
 
@@ -214,9 +274,44 @@ public class ExplodedView : MonoBehaviour
             else if (explosionMode == ExplosionMode.Target && part.targetTransform != null)
             {
                 part.transform.localPosition = Vector3.Lerp(part.originalLocalPosition, part.targetTransform.localPosition, explosionFactor);
-                // Optional: Also lerp rotation/scale if needed, but per request let's focus on position
+            }
+            else if (explosionMode == ExplosionMode.Curved && part.targetTransform != null)
+            {
+                // Generalized Bezier calculation using control points
+                List<Vector3> points = new List<Vector3>();
+                points.Add(part.originalLocalPosition);
+                foreach (var cp in part.controlPoints) if (cp != null) points.Add(cp.position); // Note: position here is local to manager or world? 
+                // Wait, targeting consistency: targetTransform and controlPoints should be in local space of this manager or world?
+                // SetupTargetObject uses localPosition relative to 'container' which is child of 'this'.
+                // So targetTransform.localPosition is local to 'this'.
+                
+                points.Clear();
+                points.Add(part.originalLocalPosition);
+                foreach (var cp in part.controlPoints) if (cp != null) points.Add(transform.InverseTransformPoint(cp.position));
+                points.Add(transform.InverseTransformPoint(part.targetTransform.position));
+
+                part.transform.localPosition = GetBezierPoint(explosionFactor, points);
             }
         }
+    }
+
+    private Vector3 GetBezierPoint(float t, List<Vector3> points)
+    {
+        if (points == null || points.Count < 2) return Vector3.zero;
+        
+        // De Casteljau's algorithm
+        int n = points.Count;
+        Vector3[] temp = new Vector3[n];
+        for (int i = 0; i < n; i++) temp[i] = points[i];
+
+        for (int j = 1; j < n; j++)
+        {
+            for (int i = 0; i < n - j; i++)
+            {
+                temp[i] = Vector3.Lerp(temp[i], temp[i + 1], t);
+            }
+        }
+        return temp[0];
     }
 
     // Optional: Reset positions when disabled or destroyed to prevent "stuck" explosion

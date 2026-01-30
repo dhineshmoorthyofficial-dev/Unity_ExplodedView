@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-01-30
+### Added
+- **Curved Explosion Mode**: New mode allowing parts to move along custom Bézier paths.
+- **Advanced Spline Control**: Per-part manual control points for infinite path customization.
+- **Control Point Hull Visualization**: Dotted line visualization in the Scene view for intuitive curve editing.
+- **Per-Manager Debug Toggles**: Ability to enable/disable debug lines for individual sub-managers to reduce visual clutter.
+- **Auto-Create Targets Toggle**: Added a setting to prevent unexpected target generation during scene loading.
+
+### Fixed
+- **Setup Initialization**: Ensured control points are correctly initialized during the "Reset & Setup" process.
+- **Recursive Debug Drawing**: Fixed a compilation error in `DrawDebugLinesRecursive` and improved performance.
+- **Editor UI**: Contextual hiding of control points when in linear `Target` mode.
+
 ## [1.0.0] - 2026-01-30
 ### Added
 - **Spherical Explosion Mode**: Uniformly explodes parts outwards from a central point.

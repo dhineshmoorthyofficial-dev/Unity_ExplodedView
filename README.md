@@ -7,6 +7,8 @@ Welcome to the **Exploded View Tool**! This Unity tool allows you to easily crea
 ### What can this package do?
 *   **Spherical Explosion**: Move all parts straight out from a center point (like a "big bang").
 *   **Targeted Explosion**: Manually tell each part exactly where to go for precise control.
+*   **Curved Explosion**: Move parts along custom Bézier paths for organic, cinematic reveals.
+*   **Multi-Point Splines**: Total control over the curve with manually editable control points.
 *   **Nested Groups**: Handle complex objects with "parts inside parts" easily.
 *   **Safe Reversible**: Your original object layout is always safe. You can reset at any time.
 
@@ -46,7 +48,17 @@ Best for: Technical diagrams, assembly instructions, or precise animations.
     2.  Click **Create Targets** if they don't exist.
     3.  You will see new "Ghost" objects appear (Target_ObjectName).
     4.  **Move the Ghost objects** to where you want the parts to end up.
-    5.  Now, the **Explosion Factor** slider will animate parts smoothly from their start position to your custom target position.
+    5.  Now, the **Explosion Factor** slider will animate parts smoothly in a straight line to the target.
+
+### 3. Curved Mode
+Best for: Organic movements, cinematic reveals, or complex fly-throughs.
+*   **How it works**: Parts move along a multi-point Bézier spline.
+*   **Usage**:
+    1.  Switch **Explosion Mode** to `Curved`.
+    2.  The system automatically generates a smooth cubic curve starting at 5% and 10% of the path.
+    3.  Expand the **Control Points** list in the Inspector to add more points.
+    4.  Move any Control Point transform in the scene to reshape the curve.
+    5.  The **Explosion Factor** will now animate the part along this custom path.
 
 ---
 
@@ -54,6 +66,8 @@ Best for: Technical diagrams, assembly instructions, or precise animations.
 
 *   **Sub-Managers (Nested Groups)**: If you have a car engine, you can have one ExplodedView on the "Engine" and another on the "Piston". Exploding the engine will move the whole piston, but you can *also* explode the piston itself separately!
 *   **Auto-Grouping**: Enable `Auto Group Children` to automatically detect sub-asssemblies and add scripts to them.
+*   **Auto-Create Targets**: Disable this to prevent the tool from creating ghost objects automatically until you click "Reset & Setup". Useful for large scenes.
+*   **Per-Manager Debug Lines**: Each manager can independently show or hide its movement lines in the Scene view.
 
 ---
 
