@@ -1,0 +1,63 @@
+{
+  "root": {
+    "name": "Unity_ExplodedView",
+    "type": "dir",
+    "description": "Root project directory",
+    "children": [
+      {
+        "name": "README.md",
+        "type": "file",
+        "description": "Project overview and quick-start usage notes."
+      },
+      {
+        "name": "CHANGELOG.md",
+        "type": "file",
+        "description": "Summary of all notable changes and version history."
+      },
+      {
+        "name": "UserManual.html",
+        "type": "file",
+        "description": "Comprehensive user guide for non-developer users."
+      },
+      {
+        "name": "Editor",
+        "type": "dir",
+        "description": "Unity Editor-specific scripts and assemblies.",
+        "children": [
+          {
+            "name": "ExplodedViewEditor.cs",
+            "type": "file",
+            "description": "Custom Inspector UI and Scene View visualization."
+          },
+          {
+            "name": "com.dhinesh.explodedview.editor.asmdef",
+            "type": "file",
+            "description": "Editor assembly definition file."
+          }
+        ]
+      },
+      {
+        "name": "Runtime",
+        "type": "dir",
+        "description": "Core explosion logic and runtime components.",
+        "children": [
+          {
+            "name": "ExplodedView.cs",
+            "type": "file",
+            "description": "Main component managing part positions and explosion math."
+          },
+          {
+            "name": "com.dhinesh.explodedview.asmdef",
+            "type": "file",
+            "description": "Runtime assembly definition file."
+          }
+        ]
+      },
+      {
+        "name": "package.json",
+        "type": "file",
+        "description": "UPM package manifest defining version and metadata."
+      }
+    ]
+  }
+}
