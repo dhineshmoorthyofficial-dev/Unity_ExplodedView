@@ -1,0 +1,20 @@
+{
+  "name": "com.dhinesh.explodedview",
+  "version": "1.0.0",
+  "displayName": "Exploded View",
+  "description": "A tool for creating exploded views of GameObjects.",
+  "unity": "2021.3",
+  "documentationUrl": "",
+  "changelogUrl": "",
+  "licensesUrl": "",
+  "keywords": [
+    "exploded",
+    "view",
+    "utility"
+  ],
+  "author": {
+    "name": "Dhinesh",
+    "email": "",
+    "url": ""
+  }
+}
