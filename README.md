@@ -2,15 +2,16 @@
 
 ## Introduction
 
-Welcome to the **Exploded View Tool**! This Unity tool allows you to easily create impressive exploded view animations and visualizations for your 3D models. Whether you want to show the inner workings of a machine or just create a cool breakdown effect, this tool makes it simple.
+Welcome to the **Exploded View Tool**! This Unity tool allows you to easily create impressive exploded view animations and visualizations for your 3D models. Whether you want to show the inner workings of a machine, create a cool breakdown effect, or produce a technical assembly animation, this tool makes it simple and powerful.
 
 ### What can this package do?
 *   **Spherical Explosion**: Move all parts straight out from a center point (like a "big bang").
 *   **Targeted Explosion**: Manually tell each part exactly where to go for precise control.
 *   **Curved Explosion**: Move parts along custom Bézier paths for organic, cinematic reveals.
-*   **Multi-Point Splines**: Total control over the curve with manually editable control points.
+*   **Orchestration**: Sequence complex nested objects (e.g., Unpack the Engine -> Then explode the Pistions).
+*   **Sequential Animation**: Automate "Move then Open" effects with a single click.
 *   **Nested Groups**: Handle complex objects with "parts inside parts" easily.
-*   **Safe Reversible**: Your original object layout is always safe. You can reset at any time.
+*   **Non-Destructive**: Your original object layout is always safe. You can reset at any time.
 
 ---
 
@@ -31,7 +32,7 @@ Welcome to the **Exploded View Tool**! This Unity tool allows you to easily crea
 
 ---
 
-## Modes Explained
+## Core Modes
 
 ### 1. Spherical Mode (Default)
 Best for: Simple objects, debris, or quick visualizations.
@@ -45,7 +46,7 @@ Best for: Technical diagrams, assembly instructions, or precise animations.
 *   **How it works**: You define a specific "End Position" for each part.
 *   **Usage**:
     1.  Switch **Explosion Mode** to `Target`.
-    2.  Click **Create Targets** if they don't exist.
+    2.  Click **Create Targets** (if they don't appear automatically).
     3.  You will see new "Ghost" objects appear (Target_ObjectName).
     4.  **Move the Ghost objects** to where you want the parts to end up.
     5.  Now, the **Explosion Factor** slider will animate parts smoothly in a straight line to the target.
@@ -55,18 +56,48 @@ Best for: Organic movements, cinematic reveals, or complex fly-throughs.
 *   **How it works**: Parts move along a multi-point Bézier spline.
 *   **Usage**:
     1.  Switch **Explosion Mode** to `Curved`.
-    2.  The system automatically generates a smooth cubic curve starting at 5% and 10% of the path.
-    3.  Expand the **Control Points** list in the Inspector to add more points.
-    4.  Move any Control Point transform in the scene to reshape the curve.
-    5.  The **Explosion Factor** will now animate the part along this custom path.
+    2.  Expand the **Control Points** list in the Inspector (under the Structure list).
+    3.  Move any Control Point transform in the scene to reshape the curve.
+    4.  The **Explosion Factor** will now animate the part along this custom path.
+
+---
+
+## Orchestration (New!)
+
+For complex mechanical objects, simply moving everything at once isn't enough. You need specific things to happen in a specific order. The Orchestration system allows you to control this sequence.
+
+### 1. Independent Control
+By default, an object has two sliders:
+*   **Explosion Factor**: Controls the *local* parts of this object (the "Leaves").
+*   **Orchestration Factor**: Controls the sequence of *sub-managers* (the "Branches").
+    *   *Example*: Use Explosion Factor to open the case, then use Orchestration Factor to push out the internal components one by one.
+
+### 2. Linked Control (Master Slider)
+If you want one slider to rule them all:
+1.  Check **Link to Main Explosion**.
+2.  Now, the **Explosion Factor** becomes the Master Control.
+3.  It will drive both the local parts and the sub-manager sequence simultaneously.
+
+### 3. Sequential Mode ("Move then Open")
+Often, you want a sub-assembly to move into position *before* it starts exploding itself.
+1.  Enable **Sequential Mode** (available when Linked on the Main object, or per-object in the Sub-Manager list).
+2.  **How it works**:
+    *   **0% - 50%**: The object moves to its target position.
+    *   **50% - 100%**: The object starts its own internal explosion sequence.
+3.  This creates a beautiful "Unpack -> Deploy" animation automatically.
+
+### 4. Reordering
+*   Use the **Reorderable List** in the Inspector to drag-and-drop sub-managers or parts.
+*   Items at the **Top** explode first (at factor 0.0).
+*   Items at the **Bottom** explode last (at factor 1.0).
 
 ---
 
 ## Advanced Features
 
 *   **Sub-Managers (Nested Groups)**: If you have a car engine, you can have one ExplodedView on the "Engine" and another on the "Piston". Exploding the engine will move the whole piston, but you can *also* explode the piston itself separately!
+*   **Deep Recursion**: driving the root Orchestrator will drive the entire tree recursively. You can animate a massively complex assembly with a single slider.
 *   **Auto-Grouping**: Enable `Auto Group Children` to automatically detect sub-asssemblies and add scripts to them.
-*   **Auto-Create Targets**: Disable this to prevent the tool from creating ghost objects automatically until you click "Reset & Setup". Useful for large scenes.
 *   **Per-Manager Debug Lines**: Each manager can independently show or hide its movement lines in the Scene view.
 
 ---
@@ -80,4 +111,7 @@ A: Make sure you clicked "Reset & Setup Explosion". The tool needs to scan your 
 A: Yes! Just set **Explosion Factor** back to `0`. Your object returns to its original state.
 
 **Q: How do I remove the tool?**
-A: **Do not just delete the script.** scroll down to the "Danger Zone" in the inspector and click **Deep Remove**. This ensures all helper scripts and temporary target objects are cleaned up properly.
+A: **Do not just delete the script.** Scroll down to the "Danger Zone" in the inspector and click **Deep Remove**. This ensures all helper scripts and temporary target objects are cleaned up properly.
+
+**Q: Why is my slider greyed out?**
+A: If a slider is disabled, it means that object is being **controlled by a parent Orchestrator**. To manually control it, select the parent and disable its Orchestration, or uncheck "Link to Main Explosion" if applicable.

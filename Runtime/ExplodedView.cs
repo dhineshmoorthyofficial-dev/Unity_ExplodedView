@@ -8,6 +8,8 @@ public class ExplodedView : MonoBehaviour
 
     [Range(0f, 1f)]
     public float explosionFactor = 0f;
+    [Range(0f, 1f)]
+    public float orchestrationFactor = 0f;
     public float sensitivity = 1f;
     public bool autoCreateTargets = false;
     public Transform center;
@@ -27,6 +29,7 @@ public class ExplodedView : MonoBehaviour
         public Vector3 direction; // Used for Spherical
         public Transform targetTransform; // Used for Target/Curved Mode (Endpoint)
         public List<Transform> controlPoints = new List<Transform>(); // New: Custom curve control
+        public BoltUnscrew boltComponent; // New: Thread/Unscrew Animation logic
     }
 
     [SerializeField] // Serialize to keep data between reloads/play mode
@@ -36,9 +39,23 @@ public class ExplodedView : MonoBehaviour
     {
         return parts.Find(p => p.transform == t);
     }
+    // ... (Lines 42-169 remain roughly same, skipping to AddPart)
+
+    // In AddPart (conceptually, but using replace_file_content so I need precise target)
+    // Actually, I will replace the PartData struct definition first.
+
+    // ... (Update AddPart logic) ...
+
+    // ... (Update Update logic) ...
+
 
     [SerializeField]
     public List<ExplodedView> subManagers = new List<ExplodedView>();
+
+    public bool orchestrateSubManagers = false;
+    public bool linkExplosionFactors = false;
+    public bool orchestrateParts = false;
+    public bool separateMovementAndOrchestration = false;
 
     private void OnEnable()
     {
@@ -161,6 +178,13 @@ public class ExplodedView : MonoBehaviour
             targetT = SetupTargetObject(child, localDir);
         }
 
+        // Check for special components
+        BoltUnscrew bolt = child.GetComponent<BoltUnscrew>();
+        if (bolt != null)
+        {
+            bolt.Init(child.localPosition, child.localRotation);
+        }
+
         parts.Add(new PartData
         {
             transform = child,
@@ -168,7 +192,8 @@ public class ExplodedView : MonoBehaviour
             originalLocalRotation = child.localRotation,
             originalLocalScale = child.localScale,
             direction = localDir,
-            targetTransform = targetT
+            targetTransform = targetT,
+            boltComponent = bolt
         });
     }
 
@@ -273,37 +298,105 @@ public class ExplodedView : MonoBehaviour
 
     private void Update()
     {
+        // Calculate Effective Factors based on modes
+        float effectiveLocalFactor = explosionFactor;
+        float effectiveOrchestrationFactor = orchestrationFactor;
+
+        if (linkExplosionFactors)
+        {
+            if (separateMovementAndOrchestration)
+            {
+                // Main Sequential Mode: 
+                // 0.0 - 0.5: Local Parts (Movement)
+                // 0.5 - 1.0: Sub-Managers (Orchestration)
+                effectiveLocalFactor = Mathf.InverseLerp(0f, 0.5f, explosionFactor);
+                effectiveOrchestrationFactor = Mathf.InverseLerp(0.5f, 1f, explosionFactor);
+            }
+            else
+            {
+                // Simultaneous Linked Mode
+                effectiveLocalFactor = explosionFactor;
+                effectiveOrchestrationFactor = explosionFactor;
+            }
+        }
+    
+        // 1. Orchestrate Sub-Managers if enabled
+        if (orchestrateSubManagers && subManagers != null && subManagers.Count > 0)
+        {
+            float step = 1f / subManagers.Count;
+            for (int i = 0; i < subManagers.Count; i++)
+            {
+                var sub = subManagers[i];
+                if (sub == null) continue;
+
+                // Calculate local factor for this slice
+                // e.g. 3 subs: [0-0.33], [0.33-0.66], [0.66-1.0]
+                float start = i * step;
+                float end = (i + 1) * step;
+                
+                // Map global factor to 0-1 for this sub-manager
+                float val = Mathf.InverseLerp(start, end, effectiveOrchestrationFactor);
+                
+                if (sub.separateMovementAndOrchestration)
+                {
+                    // Split the time slice: First 50% for Movement, Second 50% for Orchestration
+                    sub.explosionFactor = Mathf.InverseLerp(0f, 0.5f, val);
+                    sub.orchestrationFactor = Mathf.InverseLerp(0.5f, 1f, val);
+                }
+                else
+                {
+                    // Simultaneous (Default)
+                    sub.explosionFactor = val;
+                    // IMPORTANT: Recursively drive the sub-manager's orchestration logic too!
+                    sub.orchestrationFactor = val;
+                }
+            }
+        }
+
+        // 2. Handle own parts (Leaf Nodes)
         if (parts == null || parts.Count == 0) return;
         
-        foreach (var part in parts)
+        float partsStep = 1f / parts.Count;
+
+        for (int i = 0; i < parts.Count; i++)
         {
+            var part = parts[i];
             if (part == null || part.transform == null) continue;
+
+            // Determine effective factor for this part
+            float effectivePartFactor = effectiveLocalFactor;
+            if (orchestrateParts)
+            {
+                float start = i * partsStep;
+                float end = (i + 1) * partsStep;
+                effectivePartFactor = Mathf.InverseLerp(start, end, effectiveLocalFactor);
+            }
+            
+            // Priority: Special Components Override Modes
+            if (part.boltComponent != null)
+            {
+                part.boltComponent.Animate(effectivePartFactor);
+                continue; // Skip standard mode logic
+            }
 
             if (explosionMode == ExplosionMode.Spherical)
             {
-                Vector3 displacement = part.direction * (explosionFactor * sensitivity);
+                Vector3 displacement = part.direction * (effectivePartFactor * sensitivity);
                 part.transform.localPosition = part.originalLocalPosition + displacement;
             }
             else if (explosionMode == ExplosionMode.Target && part.targetTransform != null)
             {
-                part.transform.localPosition = Vector3.Lerp(part.originalLocalPosition, part.targetTransform.localPosition, explosionFactor);
+                part.transform.localPosition = Vector3.Lerp(part.originalLocalPosition, part.targetTransform.localPosition, effectivePartFactor);
             }
             else if (explosionMode == ExplosionMode.Curved && part.targetTransform != null)
             {
                 // Generalized Bezier calculation using control points
                 List<Vector3> points = new List<Vector3>();
                 points.Add(part.originalLocalPosition);
-                foreach (var cp in part.controlPoints) if (cp != null) points.Add(cp.position); // Note: position here is local to manager or world? 
-                // Wait, targeting consistency: targetTransform and controlPoints should be in local space of this manager or world?
-                // SetupTargetObject uses localPosition relative to 'container' which is child of 'this'.
-                // So targetTransform.localPosition is local to 'this'.
-                
-                points.Clear();
-                points.Add(part.originalLocalPosition);
                 foreach (var cp in part.controlPoints) if (cp != null) points.Add(transform.InverseTransformPoint(cp.position));
                 points.Add(transform.InverseTransformPoint(part.targetTransform.position));
 
-                part.transform.localPosition = GetBezierPoint(explosionFactor, points);
+                part.transform.localPosition = GetBezierPoint(effectivePartFactor, points);
             }
         }
     }

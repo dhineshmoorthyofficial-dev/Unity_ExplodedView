@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
+using UnityEditorInternal;
 
 [CustomEditor(typeof(ExplodedView))]
 [CanEditMultipleObjects]
@@ -8,10 +9,15 @@ public class ExplodedViewEditor : Editor
 {
     private SerializedProperty explosionMode;
     private SerializedProperty explosionFactor;
+    private SerializedProperty orchestrationFactor;
     private SerializedProperty sensitivity;
     private SerializedProperty center;
     private SerializedProperty useHierarchicalCenter;
     private SerializedProperty useBoundsCenter;
+    private SerializedProperty orchestrateSubManagers;
+    private ReorderableList subManagersList;
+    private SerializedProperty orchestrateParts;
+    private ReorderableList partsList;
     private SerializedProperty autoGroupChildren;
     // We won't use the SerializedProperty for subManagers logic specifically, 
     // because we want to traverse the tree recursively via direct references.
@@ -23,11 +29,48 @@ public class ExplodedViewEditor : Editor
     {
         explosionMode = serializedObject.FindProperty("explosionMode");
         explosionFactor = serializedObject.FindProperty("explosionFactor");
+        orchestrationFactor = serializedObject.FindProperty("orchestrationFactor");
         sensitivity = serializedObject.FindProperty("sensitivity");
         center = serializedObject.FindProperty("center");
         useHierarchicalCenter = serializedObject.FindProperty("useHierarchicalCenter");
         useBoundsCenter = serializedObject.FindProperty("useBoundsCenter");
         autoGroupChildren = serializedObject.FindProperty("autoGroupChildren");
+        orchestrateSubManagers = serializedObject.FindProperty("orchestrateSubManagers");
+        
+        // Setup ReorderableList for SubManagers
+        SerializedProperty subManagersProp = serializedObject.FindProperty("subManagers");
+        subManagersList = new ReorderableList(serializedObject, subManagersProp, true, true, false, false); // Draggable, Header, No Add/Remove (managed by recursion)
+        
+        subManagersList.drawHeaderCallback = (Rect rect) => {
+            EditorGUI.LabelField(rect, "Explosion Sequence (Top to Bottom)");
+        };
+        
+        subManagersList.drawElementCallback = (Rect rect, int index, bool isActive, bool isFocused) => {
+            var element = subManagersProp.GetArrayElementAtIndex(index);
+            EditorGUI.PropertyField(rect, element, GUIContent.none);
+        };
+
+        orchestrateParts = serializedObject.FindProperty("orchestrateParts");
+        SerializedProperty partsProp = serializedObject.FindProperty("parts");
+        partsList = new ReorderableList(serializedObject, partsProp, true, true, false, false);
+        
+        partsList.drawHeaderCallback = (Rect rect) => {
+            EditorGUI.LabelField(rect, "Parts Sequence (Top to Bottom)");
+        };
+        
+        partsList.drawElementCallback = (Rect rect, int index, bool isActive, bool isFocused) => {
+            var element = partsProp.GetArrayElementAtIndex(index);
+            SerializedProperty transformProp = element.FindPropertyRelative("transform");
+            if (transformProp.objectReferenceValue != null)
+            {
+                EditorGUI.LabelField(rect, transformProp.objectReferenceValue.name);
+            }
+            else
+            {
+                EditorGUI.LabelField(rect, "Empty Part");
+            }
+        };
+
         serializedObject.FindProperty("curveStrength"); // Ensure property exists for later if needed, but we'll use SerializedProperty for UI
     }
 
@@ -38,7 +81,25 @@ public class ExplodedViewEditor : Editor
         EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(explosionMode);
         
+        ExplodedView component = (ExplodedView)target;
+        bool isControlledByParent = false;
+        if (component.transform.parent != null)
+        {
+            ExplodedView parentManager = component.transform.parent.GetComponent<ExplodedView>();
+            if (parentManager != null && parentManager.orchestrateSubManagers)
+            {
+                isControlledByParent = true;
+            }
+        }
+
+        EditorGUI.BeginDisabledGroup(isControlledByParent);
         EditorGUILayout.PropertyField(explosionFactor);
+        EditorGUI.EndDisabledGroup();
+        if (isControlledByParent)
+        {
+            EditorGUILayout.HelpBox("Controlled by Parent Orchestrator", MessageType.Info);
+        }
+
         EditorGUILayout.PropertyField(sensitivity);
 
         if ((ExplodedView.ExplosionMode)explosionMode.enumValueIndex == ExplodedView.ExplosionMode.Spherical)
@@ -51,6 +112,46 @@ public class ExplodedViewEditor : Editor
         EditorGUILayout.PropertyField(autoGroupChildren);
         EditorGUILayout.PropertyField(serializedObject.FindProperty("autoCreateTargets"), new GUIContent("Auto-Create Targets"));
         
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Orchestration", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(orchestrateSubManagers, new GUIContent("Orchestrate Sequence"));
+        if (orchestrateSubManagers.boolValue)
+        {
+            SerializedProperty linkFactors = serializedObject.FindProperty("linkExplosionFactors");
+            EditorGUILayout.PropertyField(linkFactors, new GUIContent("Link to Main Explosion"));
+            
+            bool isLinked = linkFactors.boolValue;
+            
+            // If linked, show the explosion factor is driving it.
+            // If NOT linked, we enable the slider (unless controlled by parent)
+            
+            EditorGUI.BeginDisabledGroup(isControlledByParent || isLinked);
+            EditorGUILayout.PropertyField(orchestrationFactor, new GUIContent("Orchestration Factor"));
+            EditorGUI.EndDisabledGroup();
+            
+            if (isLinked)
+            {
+                EditorGUILayout.HelpBox("Orchestration is driven by the Main Explosion Factor.", MessageType.Info);
+                EditorGUI.indentLevel++;
+                SerializedProperty separate = serializedObject.FindProperty("separateMovementAndOrchestration");
+                EditorGUILayout.PropertyField(separate, new GUIContent("Sequential Mode (Parts then Subs)"));
+                EditorGUI.indentLevel--;
+            }
+            
+            if (subManagersList != null)
+            {
+                subManagersList.DoLayoutList();
+                EditorGUILayout.HelpBox("Drag to reorder. Top explodes first (0.0), bottom last (1.0).", MessageType.Info);
+            }
+        }
+        
+        EditorGUILayout.PropertyField(orchestrateParts, new GUIContent("Orchestrate Parts"));
+        if (orchestrateParts.boolValue && partsList != null)
+        {
+            partsList.DoLayoutList();
+            EditorGUILayout.HelpBox("Parts Order: Top explodes first (0.0), bottom last (1.0). Controls local sequence.", MessageType.Info);
+        }
+
         EditorGUILayout.BeginHorizontal();
         EditorGUILayout.PropertyField(serializedObject.FindProperty("drawDebugLines"), new GUIContent("Draw Debug Lines"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("debugLineColor"), GUIContent.none, GUILayout.Width(50));
@@ -170,8 +271,29 @@ public class ExplodedViewEditor : Editor
                 {
                     newUseBoundsCenter = EditorGUILayout.Toggle("Use Bounds Center", sub.useBoundsCenter);
                 }
+                
+                EditorGUI.BeginDisabledGroup(manager.orchestrateSubManagers);
                 float newFactor = EditorGUILayout.Slider("Explosion", sub.explosionFactor, 0f, 1f);
+                EditorGUI.EndDisabledGroup();
+                
                 float newSensitivity = EditorGUILayout.FloatField("Sensitivity", sub.sensitivity);
+
+                // NEW: Orchestration Controls for Sub-Managers
+                bool newOrchestrate = EditorGUILayout.Toggle("Orchestrator(Subs)", sub.orchestrateSubManagers);
+                float newOrchestrationFactor = sub.orchestrationFactor;
+                bool newSeparate = sub.separateMovementAndOrchestration;
+
+                if (newOrchestrate)
+                {
+                    EditorGUI.indentLevel++;
+                    newSeparate = EditorGUILayout.Toggle("Sequential Mode", sub.separateMovementAndOrchestration);
+                    EditorGUI.BeginDisabledGroup(manager.orchestrateSubManagers);
+                    newOrchestrationFactor = EditorGUILayout.Slider("Seq Factor", sub.orchestrationFactor, 0f, 1f);
+                    EditorGUI.EndDisabledGroup();
+                    EditorGUI.indentLevel--;
+                }
+
+                bool newOrchestrateParts = EditorGUILayout.Toggle("Orchestrator(Parts)", sub.orchestrateParts);
 
                 if (EditorGUI.EndChangeCheck())
                 {
@@ -180,7 +302,15 @@ public class ExplodedViewEditor : Editor
                     sub.useBoundsCenter = newUseBoundsCenter;
                     sub.explosionFactor = newFactor;
                     sub.sensitivity = newSensitivity;
+                    sub.orchestrateSubManagers = newOrchestrate;
+                    sub.orchestrationFactor = newOrchestrationFactor;
+                    sub.orchestrateParts = newOrchestrateParts;
+                    sub.separateMovementAndOrchestration = newSeparate;
                     EditorUtility.SetDirty(sub);
+                    
+                    // Force repaint to ensure UI updates immediately
+                    // EditorUtility.SetDirty might not force inspector repaint if selection is different
+                    // But usually it does for nested editors. We can try to force it via SceneView or similar if needed.
                 }
 
                 EditorGUI.BeginChangeCheck();
