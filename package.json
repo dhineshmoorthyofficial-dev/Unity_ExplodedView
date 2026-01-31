@@ -1,20 +1,25 @@
 {
   "name": "com.dhinesh.explodedview",
-  "version": "1.0.0",
   "displayName": "Exploded View",
-  "description": "A tool for creating exploded views of GameObjects.",
+  "version": "1.0.0",
   "unity": "2021.3",
-  "documentationUrl": "",
-  "changelogUrl": "",
-  "licensesUrl": "",
+  "unityRelease": "0f1",
+  "description": "A tool for creating exploded views of GameObjects.",
   "keywords": [
     "exploded",
     "view",
-    "utility"
+    "utility",
+    "visualization",
+    "animation"
   ],
   "author": {
-    "name": "Dhinesh",
+    "name": "Dhinesh Moorthy",
     "email": "",
     "url": ""
-  }
+  },
+  "license": "MIT",
+  "documentationUrl": "",
+  "changelogUrl": "",
+  "licensesUrl": "",
+  "dependencies": {}
 }

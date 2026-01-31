@@ -12,6 +12,7 @@ public class ExplodedView : MonoBehaviour
     public bool autoCreateTargets = false;
     public Transform center;
     public bool useHierarchicalCenter = false;
+    public bool useBoundsCenter = false;
     public bool autoGroupChildren = false;
     public bool drawDebugLines = false;
     public Color debugLineColor = Color.yellow;
@@ -109,6 +110,7 @@ public class ExplodedView : MonoBehaviour
                 
                 // Propagate mode to children
                 childManager.explosionMode = this.explosionMode;
+                childManager.useBoundsCenter = this.useBoundsCenter;
                 childManager.SetupExplosion();
             }
             // Else if it has a renderer, it's a "significant part" (a leaf mesh)
@@ -137,7 +139,18 @@ public class ExplodedView : MonoBehaviour
             centerForThisPart = child.parent.position;
         }
 
-        Vector3 worldDir = (child.position - centerForThisPart).normalized;
+        Vector3 worldDir;
+        if (useBoundsCenter)
+        {
+            Renderer renderer = child.GetComponent<Renderer>();
+            Vector3 centerPos = renderer != null ? renderer.bounds.center : child.position;
+            worldDir = (centerPos - centerForThisPart).normalized;
+        }
+        else
+        {
+            worldDir = (child.position - centerForThisPart).normalized;
+        }
+
         if (worldDir == Vector3.zero) worldDir = Vector3.up;
 
         Vector3 localDir = child.parent != null ? child.parent.InverseTransformVector(worldDir) : worldDir;
@@ -395,6 +408,7 @@ public class ExplodedView : MonoBehaviour
                     newManager.explosionFactor = this.explosionFactor;
                     newManager.sensitivity = this.sensitivity;
                     newManager.useHierarchicalCenter = this.useHierarchicalCenter;
+                    newManager.useBoundsCenter = this.useBoundsCenter;
                     newManager.autoGroupChildren = true;
 
                     // Trigger setup to continue the chain

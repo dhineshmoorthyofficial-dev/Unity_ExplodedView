@@ -11,6 +11,7 @@ public class ExplodedViewEditor : Editor
     private SerializedProperty sensitivity;
     private SerializedProperty center;
     private SerializedProperty useHierarchicalCenter;
+    private SerializedProperty useBoundsCenter;
     private SerializedProperty autoGroupChildren;
     // We won't use the SerializedProperty for subManagers logic specifically, 
     // because we want to traverse the tree recursively via direct references.
@@ -25,6 +26,7 @@ public class ExplodedViewEditor : Editor
         sensitivity = serializedObject.FindProperty("sensitivity");
         center = serializedObject.FindProperty("center");
         useHierarchicalCenter = serializedObject.FindProperty("useHierarchicalCenter");
+        useBoundsCenter = serializedObject.FindProperty("useBoundsCenter");
         autoGroupChildren = serializedObject.FindProperty("autoGroupChildren");
         serializedObject.FindProperty("curveStrength"); // Ensure property exists for later if needed, but we'll use SerializedProperty for UI
     }
@@ -43,6 +45,7 @@ public class ExplodedViewEditor : Editor
         {
             EditorGUILayout.PropertyField(center);
             EditorGUILayout.PropertyField(useHierarchicalCenter);
+            EditorGUILayout.PropertyField(useBoundsCenter);
         }
         
         EditorGUILayout.PropertyField(autoGroupChildren);
@@ -162,6 +165,11 @@ public class ExplodedViewEditor : Editor
                 // Controls for THIS sub-manager
                 EditorGUI.BeginChangeCheck();
                 ExplodedView.ExplosionMode subMode = (ExplodedView.ExplosionMode)EditorGUILayout.EnumPopup("Mode", sub.explosionMode);
+                bool newUseBoundsCenter = sub.useBoundsCenter;
+                if (subMode == ExplodedView.ExplosionMode.Spherical)
+                {
+                    newUseBoundsCenter = EditorGUILayout.Toggle("Use Bounds Center", sub.useBoundsCenter);
+                }
                 float newFactor = EditorGUILayout.Slider("Explosion", sub.explosionFactor, 0f, 1f);
                 float newSensitivity = EditorGUILayout.FloatField("Sensitivity", sub.sensitivity);
 
@@ -169,6 +177,7 @@ public class ExplodedViewEditor : Editor
                 {
                     Undo.RecordObject(sub, "Change Sub-Manager Settings");
                     sub.explosionMode = subMode;
+                    sub.useBoundsCenter = newUseBoundsCenter;
                     sub.explosionFactor = newFactor;
                     sub.sensitivity = newSensitivity;
                     EditorUtility.SetDirty(sub);
