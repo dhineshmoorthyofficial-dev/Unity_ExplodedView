@@ -2,7 +2,8 @@
     "name": "com.dhinesh.explodedview.editor",
     "rootNamespace": "",
     "references": [
-        "com.dhinesh.explodedview"
+        "com.dhinesh.explodedview",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"

@@ -30,6 +30,7 @@ public class ExplodedView : MonoBehaviour
         public Transform targetTransform; // Used for Target/Curved Mode (Endpoint)
         public List<Transform> controlPoints = new List<Transform>(); // New: Custom curve control
         public BoltUnscrew boltComponent; // New: Thread/Unscrew Animation logic
+        public List<Annotation> annotations = new List<Annotation>(); // New: Support multiple labels per part
     }
 
     [SerializeField] // Serialize to keep data between reloads/play mode
@@ -57,6 +58,11 @@ public class ExplodedView : MonoBehaviour
     public bool orchestrateParts = false;
     public bool separateMovementAndOrchestration = false;
 
+    [Header("Global Annotation Settings")]
+    public bool showAnnotations = true;
+    public float globalAnnotationScale = 1.0f;
+    public Vector3 globalAnnotationOffset = Vector3.zero;
+
     private void OnEnable()
     {
         // Only setup if we haven't already, or if the list is empty
@@ -71,6 +77,34 @@ public class ExplodedView : MonoBehaviour
         if (autoCreateTargets && (explosionMode == ExplosionMode.Target || explosionMode == ExplosionMode.Curved))
         {
             InitializeTargetMode();
+        }
+
+        // Safety: ensure default values for global settings if they seem uninitialized 
+        // (This handles existing components in scenes picking up new fields)
+        if (globalAnnotationScale == 0 && showAnnotations == false && globalAnnotationOffset == Vector3.zero)
+        {
+            showAnnotations = true;
+            globalAnnotationScale = 1f;
+        }
+
+        if (parts != null)
+        {
+            foreach (var part in parts)
+            {
+                foreach (var anno in part.annotations)
+                {
+                    if (anno != null)
+                    {
+                        anno.globalVisibility = showAnnotations;
+                        anno.globalScaleMultiplier = globalAnnotationScale;
+                        anno.globalPositionOffset = globalAnnotationOffset;
+
+                        // Force an update to reflect changes in inspector immediately
+                        float factor = orchestrateParts ? 0 : explosionFactor;
+                        anno.Animate(factor);
+                    }
+                }
+            }
         }
     }
 
@@ -109,7 +143,33 @@ public class ExplodedView : MonoBehaviour
             InitializeTargetMode();
         }
         
+        RefreshAnnotations();
+
         Debug.Log($"ExplodedView ({gameObject.name}): Setup complete. Moving {parts.Count} parts locally. Master Control has {subManagers.Count} direct sub-managers.");
+    }
+
+    [ContextMenu("Refresh Annotations")]
+    public void RefreshAnnotations()
+    {
+        if (parts == null) return;
+        
+        int count = 0;
+        foreach (var part in parts)
+        {
+            if (part.transform != null)
+            {
+                part.annotations = new List<Annotation>(part.transform.GetComponentsInChildren<Annotation>(true));
+                count += part.annotations.Count;
+            }
+        }
+        
+        // Also refresh sub-managers
+        foreach (var sub in subManagers)
+        {
+            if (sub != null) sub.RefreshAnnotations();
+        }
+
+        Debug.Log($"ExplodedView ({gameObject.name}): Refreshed annotation links. Found {count} annotations.");
     }
 
     private void DiscoverParts(Transform current, Vector3 rootCenterPos)
@@ -185,7 +245,8 @@ public class ExplodedView : MonoBehaviour
             bolt.Init(child.localPosition, child.localRotation);
         }
 
-        parts.Add(new PartData
+        // Create and populate PartData
+        PartData part = new PartData
         {
             transform = child,
             originalLocalPosition = child.localPosition,
@@ -193,8 +254,11 @@ public class ExplodedView : MonoBehaviour
             originalLocalScale = child.localScale,
             direction = localDir,
             targetTransform = targetT,
-            boltComponent = bolt
-        });
+            boltComponent = bolt,
+            annotations = new List<Annotation>(child.GetComponentsInChildren<Annotation>(true))
+        };
+
+        parts.Add(part);
     }
 
     public void InitializeTargetMode()
@@ -376,10 +440,8 @@ public class ExplodedView : MonoBehaviour
             if (part.boltComponent != null)
             {
                 part.boltComponent.Animate(effectivePartFactor);
-                continue; // Skip standard mode logic
             }
-
-            if (explosionMode == ExplosionMode.Spherical)
+            else if (explosionMode == ExplosionMode.Spherical)
             {
                 Vector3 displacement = part.direction * (effectivePartFactor * sensitivity);
                 part.transform.localPosition = part.originalLocalPosition + displacement;
@@ -397,6 +459,23 @@ public class ExplodedView : MonoBehaviour
                 points.Add(transform.InverseTransformPoint(part.targetTransform.position));
 
                 part.transform.localPosition = GetBezierPoint(effectivePartFactor, points);
+            }
+
+            // Animate All Annotations if present
+            if (part.annotations != null)
+            {
+                foreach (var anno in part.annotations)
+                {
+                    if (anno != null)
+                    {
+                        // Push Global Settings as non-destructive overrides
+                        anno.globalVisibility = showAnnotations;
+                        anno.globalScaleMultiplier = globalAnnotationScale;
+                        anno.globalPositionOffset = globalAnnotationOffset;
+                        
+                        anno.Animate(effectivePartFactor);
+                    }
+                }
             }
         }
     }
@@ -484,29 +563,20 @@ public class ExplodedView : MonoBehaviour
 
     private void AutoAttachSubManagers()
     {
-        // Smart Selection: Only add sub-managers to immediate children that are actually GROUPS.
-        // A child is a group if it has its own children.
-        // Single leaf nodes will remain managed by THIS (the root) component.
+        // ... (existing code)
         foreach (Transform child in transform)
         {
-            // If it has its own hierarchy and contains renderers
-            // Optimization: Use GetComponentInChildren (singular) checks for existence without allocating array
             if (child.childCount > 0 && child.GetComponentInChildren<Renderer>() != null)
             {
                 if (child.GetComponent<ExplodedView>() == null)
                 {
                     ExplodedView newManager = child.gameObject.AddComponent<ExplodedView>();
-                    
-                    // Propagate settings to ensure seamless recursion
                     newManager.explosionFactor = this.explosionFactor;
                     newManager.sensitivity = this.sensitivity;
                     newManager.useHierarchicalCenter = this.useHierarchicalCenter;
                     newManager.useBoundsCenter = this.useBoundsCenter;
                     newManager.autoGroupChildren = true;
-
-                    // Trigger setup to continue the chain
                     newManager.SetupExplosion();
-                    
                     Debug.Log($"ExplodedView: Auto-added group manager to: {child.name}");
                 }
             }

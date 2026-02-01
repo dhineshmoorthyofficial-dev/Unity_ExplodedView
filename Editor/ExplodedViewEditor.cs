@@ -19,6 +19,9 @@ public class ExplodedViewEditor : Editor
     private SerializedProperty orchestrateParts;
     private ReorderableList partsList;
     private SerializedProperty autoGroupChildren;
+    private SerializedProperty showAnnotations;
+    private SerializedProperty globalAnnotationScale;
+    private SerializedProperty globalAnnotationOffset;
     // We won't use the SerializedProperty for subManagers logic specifically, 
     // because we want to traverse the tree recursively via direct references.
 
@@ -72,6 +75,10 @@ public class ExplodedViewEditor : Editor
         };
 
         serializedObject.FindProperty("curveStrength"); // Ensure property exists for later if needed, but we'll use SerializedProperty for UI
+        
+        showAnnotations = serializedObject.FindProperty("showAnnotations");
+        globalAnnotationScale = serializedObject.FindProperty("globalAnnotationScale");
+        globalAnnotationOffset = serializedObject.FindProperty("globalAnnotationOffset");
     }
 
     public override void OnInspectorGUI()
@@ -156,6 +163,12 @@ public class ExplodedViewEditor : Editor
         EditorGUILayout.PropertyField(serializedObject.FindProperty("drawDebugLines"), new GUIContent("Draw Debug Lines"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("debugLineColor"), GUIContent.none, GUILayout.Width(50));
         EditorGUILayout.EndHorizontal();
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Global Annotation Settings", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(showAnnotations, new GUIContent("Show Annotations"));
+        EditorGUILayout.PropertyField(globalAnnotationScale, new GUIContent("Global Scale"));
+        EditorGUILayout.PropertyField(globalAnnotationOffset, new GUIContent("Global Offset"));
 
         EditorGUILayout.Space();
 
